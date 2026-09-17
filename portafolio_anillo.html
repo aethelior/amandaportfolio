@@ -1,0 +1,2240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ring — prototype v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Archivo:wght@400;500;600&family=Caveat:wght@500;600&family=Arapey&family=Homemade+Apple&family=DM+Mono:wght@400;500&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#FBFAF5; --paper:#FBF7EE; --ink:#2b2320; --ink-soft:#6b5c52;
+    --oxblood:#781C2B; --blush:#FFD8E0; --pale-yellow:#FFFAD2; --chocolate:#513F2B; --ice-blue:#EDFBFE;
+    --line: rgba(43,35,32,0.14);
+    --font-display:'Arapey', serif; --font-body:'DM Mono', monospace; --font-hand:'Homemade Apple', cursive;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; width:100%; height:100%; background: var(--cream); color: var(--ink); font-family: var(--font-body); overflow:hidden; }
+  .stage{ position:relative; width:100%; height:100vh; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .topline{ position:absolute; top:26px; left:30px; right:30px; z-index:6; display:flex; justify-content:space-between; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color: var(--ink-soft); pointer-events:none; }
+  .hint{ position:absolute; bottom:24px; left:50%; transform:translateX(-50%); font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color: var(--ink-soft); opacity:0.75; z-index:6; text-align:center; transition: opacity 0.4s ease; }
+
+  .ring-scale-wrap{ transform-origin:center center; }
+  .ring-orbit{
+    position:relative; width:620px; height:620px;
+    transition: transform 0.12s linear;
+  }
+  .ring-spin{ position:absolute; inset:0; transition: transform 0.12s linear; }
+  .orbit-item{ position:absolute; top:50%; left:50%; width:0; height:0; }
+  .counter-spin{ transition: transform 0.12s linear; }
+  .card{
+    position:absolute; width:70px; height:92px; margin:-46px 0 0 -35px;
+    border-radius:5px; box-shadow: 0 5px 12px rgba(34,30,27,0.2);
+    border:1px solid rgba(255,255,255,0.3); cursor:default;
+    background-size:cover; background-position:center; background-repeat:no-repeat; overflow:hidden;
+    transform: rotate(var(--tilt, 0deg));
+  }
+  .card::after{
+    content:''; position:absolute; inset:0; border-radius:4px;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,0.45) 100%);
+  }
+  .card.case{ border:2px solid rgba(255,255,255,0.75); box-shadow: 0 8px 18px rgba(34,30,27,0.32); cursor:pointer; animation: casePulse 2.6s ease-in-out infinite; }
+  @keyframes casePulse{
+    0%, 100%{ transform: rotate(var(--tilt, 0deg)) scale(1); }
+    50%{ transform: rotate(var(--tilt, 0deg)) scale(1.045); }
+  }
+  .card .open-label{
+    position:absolute; bottom:6px; left:8px; z-index:1;
+    font-size:13px; color:#fff;
+    opacity:0; transition: opacity 0.3s ease;
+  }
+  .card.case .open-label{ opacity:1; }
+
+  .center-name{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    text-align:center; z-index:3; opacity:0; transition: opacity 1s ease 0.2s; cursor:pointer;
+  }
+  .center-name.show{ opacity:1; }
+  .center-name.hide-zoomed{ opacity:0; pointer-events:none; }
+  .center-name .signature{ font-family: var(--font-hand); font-size:42px; color: var(--ink); line-height:1; }
+  .center-name .role{ margin-top:6px; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color: var(--ink-soft); }
+  .center-name .cta{ margin-top:10px; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color: var(--ink-soft); opacity:0.7; }
+
+  .deck-label{
+    position:absolute; bottom:76px; left:50%; transform:translateX(-50%);
+    text-align:center; z-index:6; opacity:0; transition: opacity 0.5s ease; pointer-events:none;
+  }
+  .deck-label.show{ opacity:1; }
+  .deck-label .num{ font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color: var(--ink-soft); }
+  .deck-label .name{ font-family: var(--font-display); font-weight:500; font-style:italic; font-size:24px; color: var(--ink); margin-top:2px; }
+
+  .scrim{ position:fixed; inset:0; background: rgba(242,238,228,0.4); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); opacity:0; pointer-events:none; transition: opacity 0.45s ease; z-index:10; }
+  .scrim.open{ opacity:1; pointer-events:auto; }
+  .window{ position:fixed; top:50%; left:50%; width:min(560px, 88vw); height:min(640px, 82vh); transform: translate(-50%,-50%) scale(0.92); background: var(--cream); border-radius:14px; box-shadow: 0 30px 70px rgba(34,30,27,0.35); opacity:0; pointer-events:none; transition: opacity 0.4s ease, transform 0.4s cubic-bezier(.22,.61,.36,1); z-index:20; overflow:hidden; display:flex; flex-direction:column; }
+  .window.open{ opacity:1; pointer-events:auto; transform: translate(-50%,-50%) scale(1); }
+  .window-close{ position:absolute; top:14px; right:14px; z-index:5; width:30px; height:30px; border-radius:50%; background: rgba(0,0,0,0.28); color:#fff; border:none; cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center; }
+  .window-scroll{ overflow-y:auto; height:100%; }
+  .window-hero{ height:260px; display:flex; align-items:flex-end; padding:26px; position:relative; }
+  .window-hero::after{ content:''; position:absolute; inset:0; background: linear-gradient(180deg, transparent 35%, rgba(0,0,0,0.4)); }
+  .window-hero h2{ position:relative; z-index:2; font-family: var(--font-display); font-weight:500; font-size:30px; color:#fff; margin:0 0 4px; }
+  .window-hero p{ position:relative; z-index:2; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color: rgba(255,255,255,0.85); margin:0; }
+  .window-body{ padding:26px 30px 40px; }
+  .window-body .kicker{ font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color: var(--oxblood); margin:0 0 6px; }
+  .window-body p{ font-size:13.5px; line-height:1.65; color: var(--ink-soft); margin:0 0 24px; max-width:44ch; }
+  .window-body section{ padding-top:20px; border-top:1px solid var(--line); margin-top:20px; }
+  .window-body section:first-child{ border-top:none; margin-top:0; padding-top:0; }
+  .window-foot{ padding:24px 30px 44px; text-align:center; }
+  .window-foot button{ font-size:11px; letter-spacing:0.1em; text-transform:uppercase; background:none; border:1px solid var(--line); color: var(--ink-soft); padding:10px 20px; border-radius:30px; cursor:pointer; }
+
+  /* === Estilos del ticket de Cookiedugies (scopeados a .roll) === */
+  .roll{
+    --blush:#FFD8E0;
+    --oxblood:#781C2B;
+    --pale-yellow:#FFFAD2;
+    --chocolate:#513F2B;
+    --ice-blue:#EDFBFE;
+    --cream:#F7F2E9;
+    --paper:#FBF7EE;
+    --ink:#2b2320;
+
+    --font-display: 'Arapey', serif;
+    --font-hand: 'Homemade Apple', cursive;
+    --font-mono: 'DM Mono', monospace;
+  }
+
+  .roll *{box-sizing:border-box;}
+    
+
+  .roll{
+    width: 100%;
+    max-width: 760px;
+    position: relative;
+  }
+
+  .roll-label{
+    text-align:left;
+    color: var(--oxblood);
+    font-family: var(--font-mono);
+    letter-spacing: 0.2em;
+    font-size: 9.5px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    opacity: 0.75;
+  }
+
+  /* ---- ticket stub ---- */
+  .stub{
+    background: var(--paper);
+    position: relative;
+    padding: 46px 54px;
+    margin-bottom: 2px;
+  }
+
+  .stub::before, .stub::after{
+    content:"";
+    position:absolute;
+    top:0;
+    bottom:0;
+    width: 34px;
+    background-image: radial-gradient(circle 6px, var(--chocolate) 6px, transparent 6.5px);
+    background-repeat: repeat-y;
+    background-position: center;
+    background-size: 34px 26px;
+  }
+  .stub::before{ left:0; }
+  .stub::after{ right:0; }
+
+  .stub-inner{
+    padding: 0 26px;
+  }
+
+  /* perforation between stubs */
+  .perf{
+    height: 0;
+    border-top: 2px dashed rgba(81,63,43,0.35);
+    position: relative;
+    margin: 0 34px;
+  }
+  .perf::before{
+    content: "✂";
+    position:absolute;
+    left: -6px;
+    top: -9px;
+    font-size: 12px;
+    color: var(--chocolate);
+    background: var(--chocolate);
+    background: transparent;
+    opacity:.5;
+  }
+
+  .eyebrow{
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--oxblood);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-bottom: 1px solid rgba(81,63,43,0.25);
+    padding-bottom: 10px;
+    margin-bottom: 22px;
+  }
+  .eyebrow span:last-child{
+    padding: 3px 9px;
+    border-radius: 2px;
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+  }
+
+  .field-row{
+    display:flex;
+    gap: 24px;
+    font-size: 12.5px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .field{
+    flex:1;
+    min-width: 140px;
+  }
+  .field-label{
+    text-transform:uppercase;
+    letter-spacing:0.12em;
+    color: var(--oxblood);
+    font-size: 10.5px;
+    display:block;
+    margin-bottom: 4px;
+  }
+  .field-value{
+    font-size: 13px;
+    line-height:1.5;
+  }
+  .placeholder{
+    color: rgba(81,63,43,0.45);
+    font-style: italic;
+  }
+
+  /* HERO */
+  .hero-name{
+    font-family: var(--font-hand);
+    font-size: 64px;
+    color: var(--oxblood);
+    line-height: 1.15;
+    margin: 4px 0 10px;
+  }
+  .hero-sub{
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 20px;
+    color: var(--chocolate);
+    margin-bottom: 4px;
+  }
+  .hero-tagline{
+    font-family: var(--font-display);
+    font-size: 15px;
+    color: var(--ink);
+    max-width: 480px;
+    margin-bottom: 26px;
+  }
+
+  .collage{
+    display:grid;
+    grid-template-columns: 1.3fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .collage img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+    border: 1px solid rgba(81,63,43,0.25);
+    filter: sepia(8%) saturate(92%);
+  }
+  .collage .big{ grid-row: 1 / 4; aspect-ratio: 3/4; }
+  .collage .small{ aspect-ratio: 4/3; }
+  .collage.pair{ grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
+  .collage.pair img{ grid-row: auto; aspect-ratio: 3/4; }
+  .hero-wide{ margin-top:10px; }
+  .hero-wide img{
+    width:100%;
+    aspect-ratio: 16/9;
+    object-fit:cover;
+    display:block;
+    border: 1px solid rgba(81,63,43,0.25);
+    filter: sepia(8%) saturate(92%);
+  }
+
+  .hero-single{ margin-top:10px; }
+  .hero-single img{
+    width:100%;
+    max-width: 320px;
+    aspect-ratio: 3/4;
+    object-fit:cover;
+    display:block;
+    border: 1px solid rgba(81,63,43,0.25);
+    filter: sepia(8%) saturate(92%);
+  }
+  .hero-split{
+    display:grid;
+    grid-template-columns: 200px 1fr;
+    gap: 26px;
+    align-items:start;
+    margin-top: 14px;
+  }
+  .hero-split .hero-single{ margin-top:0; }
+  .hero-split .hero-single img{ max-width:100%; aspect-ratio:3/4; }
+  .hero-split .hero-sub{ margin-top:0; }
+
+  .handnote{
+    font-family: var(--font-hand);
+    font-size: 22px;
+    color: var(--oxblood);
+    transform: rotate(-3deg);
+    display:inline-block;
+    margin-top: 14px;
+  }
+
+  /* stamp */
+  .stamp{
+    position:absolute;
+    top: 40px;
+    right: 54px;
+    width: 84px;
+    height: 84px;
+    border: 2px solid var(--oxblood);
+    border-radius: 50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    color: var(--oxblood);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    transform: rotate(8deg);
+    opacity: 0.85;
+    line-height: 1.3;
+    padding: 6px;
+  }
+
+  /* CHALLENGE */
+  .split{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+  }
+  .split .field-label{ margin-bottom: 8px; }
+  .split p{ font-size: 12.5px; line-height:1.6; margin:0; font-family: var(--font-mono); }
+  .divider-v{
+    width:1px;
+    background: rgba(81,63,43,0.25);
+  }
+
+  /* MOODBOARD */
+  .swatches{
+    display:flex;
+    gap: 16px;
+    margin: 10px 0 30px;
+    flex-wrap: wrap;
+  }
+  .swatch-item{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    width: 72px;
+  }
+  .swatch{
+    width: 56px;
+    height: 46px;
+    border: 1px solid rgba(81,63,43,0.3);
+  }
+  .swatch-item span{
+    margin-top: 7px;
+    font-size: 8.5px;
+    line-height: 1.25;
+    text-align: center;
+    font-family: var(--font-mono);
+    color: var(--chocolate);
+  }
+  .type-sample{
+    display:flex;
+    gap: 30px;
+    margin: 24px 0;
+  }
+  .type-sample div{ font-size:11px; color:var(--oxblood); text-transform:uppercase; letter-spacing:0.1em;}
+  .type-sample .qs{ font-family: 'Quicksand', sans-serif; font-weight:700; font-size: 22px; color:var(--ink); text-transform:none; letter-spacing:0; margin-top:6px;}
+  .type-sample .ts{ font-family: var(--font-hand); font-size: 26px; color:var(--ink); text-transform:none; letter-spacing:0; margin-top:6px;}
+
+  /* PROCESS */
+  .roadmap{
+    list-style:none;
+    padding:0;
+    margin: 12px 0 0;
+  }
+  .roadmap li{
+    display:flex;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px dashed rgba(81,63,43,0.25);
+    align-items:flex-start;
+  }
+  .roadmap li:last-child{ border-bottom:none; }
+  .check{
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--oxblood);
+    flex-shrink:0;
+    margin-top: 3px;
+    position:relative;
+  }
+  .check::after{
+    content:"✓";
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size: 11px;
+    color: var(--oxblood);
+  }
+  .stage-name{
+    font-size: 11px;
+    text-transform:uppercase;
+    letter-spacing:0.12em;
+    color: var(--oxblood);
+    margin-bottom: 3px;
+    font-family: var(--font-mono);
+  }
+  .stage-desc{ font-size:12.5px; line-height:1.55; }
+  .stage-thumbs{
+    display:flex;
+    flex-wrap: wrap;
+    gap:8px;
+    margin-top: 10px;
+  }
+  .stage-thumbs img{
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    border: 1px solid rgba(81,63,43,0.3);
+    filter: sepia(8%);
+  }
+  .stage-thumbs.wide{
+    flex-direction: column;
+  }
+  .stage-thumbs.wide img{
+    width: 100%;
+    height: auto;
+  }
+
+  /* SOLUTION */
+  .solution-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 16px;
+  }
+  .solution-grid img{
+    width:100%;
+    height:auto;
+    border: 1px solid rgba(81,63,43,0.3);
+    filter: sepia(8%);
+  }
+  .solution-grid.wide{
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .solution-grid.wide .solution-caption{
+    text-align:left;
+    margin-top:8px;
+    margin-bottom: 4px;
+  }
+  .solution-caption{
+    font-size: 10.5px;
+    text-align:center;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color: var(--oxblood);
+    margin-top: 6px;
+  }
+
+  /* GALLERY */
+  .gallery-grid{
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .gallery-grid img{
+    width:100%;
+    height:auto;
+    border: 1px solid rgba(81,63,43,0.3);
+    filter: sepia(8%);
+  }
+  .gallery-grid.wide{
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .video-highlight{
+    margin: 18px auto 0;
+    max-width: 240px;
+  }
+  .video-highlight video{
+    width: 100%;
+    height: auto;
+    display: block;
+    border: 1px solid rgba(81,63,43,0.3);
+    filter: sepia(8%);
+  }
+  .video-highlight-caption{
+    font-size: 10.5px;
+    text-align:center;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color: var(--oxblood);
+    margin-top: 8px;
+  }
+  .video-highlight.wide{
+    max-width: 100%;
+  }
+
+  .moodboard-footnote{
+    font-size: 10px;
+    line-height:1.5;
+    color: var(--oxblood);
+    opacity:0.75;
+    margin-top: 16px;
+    padding-top: 10px;
+    border-top: 1px dotted rgba(81,63,43,0.3);
+  }
+
+  /* IMPACT */
+  .impact-list{
+    margin: 14px 0 0;
+    padding:0;
+    list-style:none;
+  }
+  .impact-list li{
+    padding: 10px 0;
+    border-bottom: 1px dotted rgba(81,63,43,0.3);
+    font-size: 12.5px;
+    display:flex;
+    gap: 16px;
+  }
+  .impact-list li:last-child{border-bottom:none;}
+  .impact-list b{
+    font-family: var(--font-mono);
+    text-transform:uppercase;
+    font-size:10.5px;
+    letter-spacing:0.1em;
+    color:var(--oxblood);
+    min-width: 120px;
+    flex-shrink:0;
+  }
+
+  .folio{
+    text-align:right;
+    font-size:10px;
+    color: rgba(81,63,43,0.5);
+    margin-top: 30px;
+  }
+
+  .end-cut{
+    text-align:center;
+    color: var(--pale-yellow);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-top: 18px;
+    opacity:0.6;
+  }
+
+  @media (max-width: 640px){
+    .stub{ padding: 36px 20px; }
+    .stub-inner{ padding: 0 12px; }
+    .hero-name{ font-size: 44px; }
+    .collage{ grid-template-columns: 1fr 1fr; }
+    .split{ grid-template-columns: 1fr; }
+    .gallery-grid{ grid-template-columns: repeat(3,1fr); }
+    .stamp{ position:static; margin-bottom:16px; transform:none; }
+    .hero-split{ grid-template-columns: 1fr; }
+    .hero-split .hero-single img{ max-width: 220px; margin: 0 auto; }
+  }
+
+  @media (max-width: 720px){
+    .ring-scale-wrap{ transform: scale(0.72); }
+    .topline{ font-size: 10px; left:18px; right:18px; }
+    .hint{ font-size: 10px; padding: 0 20px; }
+  }
+
+  @media (max-width: 460px){
+    .ring-scale-wrap{ transform: scale(0.5); }
+  }
+
+
+  /* --- Integración del ticket (Cookiedugies) dentro de la ventana --- */
+  .window.window-ticket{ max-width: 820px; width: min(820px, 92vw); background: transparent; box-shadow: none; border-radius: 0; overflow: visible; }
+  .window.window-ticket .window-hero{ display:none; }
+  .window.window-ticket .window-body{ padding: 28px 0 40px; }
+  .window.window-ticket .roll{ max-width: 100%; padding: 0 6px; filter: drop-shadow(0 25px 50px rgba(0,0,0,0.4)); }
+  .window.window-ticket .window-close{ background: rgba(0,0,0,0.45); }
+</style>
+  <link rel="preload" as="image" href="images/ring-luzviva-1.jpeg">
+  <link rel="preload" as="image" href="images/ring-luzviva-2.jpeg">
+  <link rel="preload" as="image" href="images/ring-luzviva-3.jpg">
+  <link rel="preload" as="image" href="images/ring-luzviva-4.jpeg">
+  <link rel="preload" as="image" href="images/ring-luzviva-5.jpeg">
+  <link rel="preload" as="image" href="images/ring-cookiedugies-1.jpeg">
+  <link rel="preload" as="image" href="images/ring-cookiedugies-2.jpeg">
+  <link rel="preload" as="image" href="images/ring-cookiedugies-3.jpg">
+  <link rel="preload" as="image" href="images/ring-cookiedugies-4.jpeg">
+  <link rel="preload" as="image" href="images/ring-cookiedugies-5.jpeg">
+  <link rel="preload" as="image" href="images/ring-sequence-1.jpeg">
+  <link rel="preload" as="image" href="images/ring-sequence-2.jpeg">
+  <link rel="preload" as="image" href="images/ring-sequence-3.jpg">
+  <link rel="preload" as="image" href="images/ring-sequence-4.jpeg">
+  <link rel="preload" as="image" href="images/ring-sequence-5.jpeg">
+  <link rel="preload" as="image" href="images/ring-thecoffee-1.jpeg">
+  <link rel="preload" as="image" href="images/ring-thecoffee-2.jpeg">
+  <link rel="preload" as="image" href="images/ring-thecoffee-3.jpg">
+  <link rel="preload" as="image" href="images/ring-thecoffee-4.jpeg">
+  <link rel="preload" as="image" href="images/ring-thecoffee-5.jpeg">
+  <link rel="preload" as="image" href="images/ring-secretaria-1.jpg">
+  <link rel="preload" as="image" href="images/ring-secretaria-2.jpg">
+  <link rel="preload" as="image" href="images/ring-secretaria-3.jpg">
+  <link rel="preload" as="image" href="images/ring-secretaria-4.jpeg">
+  <link rel="preload" as="image" href="images/ring-secretaria-5.jpg">
+  <link rel="preload" as="image" href="images/ring-kiddos-1.jpeg">
+  <link rel="preload" as="image" href="images/ring-kiddos-2.jpeg">
+  <link rel="preload" as="image" href="images/ring-kiddos-3.jpg">
+  <link rel="preload" as="image" href="images/ring-kiddos-4.jpeg">
+  <link rel="preload" as="image" href="images/ring-kiddos-5.jpeg">
+</head>
+<body>
+
+<div class="stage" id="stage">
+  <div class="topline">
+    <span>Amanda Camacho — Portfolio</span>
+    <span id="hintCount">Full ring</span>
+  </div>
+
+  <div class="ring-scale-wrap">
+  <div class="ring-orbit" id="ringOrbit">
+    <div class="ring-spin" id="ringSpin"></div>
+    <div class="center-name" id="centerName">
+      <div class="signature">Amanda Camacho</div>
+      <div class="role">Digital Creative</div>
+      <div class="cta">Click — about me</div>
+    </div>
+    <div class="deck-label" id="deckLabel">
+      <div class="num"></div>
+      <div class="name"></div>
+    </div>
+  </div>
+  </div>
+
+  <div class="hint" id="scrollHint">Scroll to zoom into the ring · click a card directly to jump there</div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="window" id="window">
+  <button class="window-close" id="closeBtn" aria-label="Close">✕</button>
+  <div class="window-scroll" id="windowScroll">
+    <div class="window-hero" id="windowHero"><div><h2 id="windowTitle"></h2><p id="windowSubtitle"></p></div></div>
+    <div class="window-body" id="windowBody"></div>
+    <div class="window-foot"><button id="backToTop">Back to the ring ↺</button></div>
+  </div>
+</div>
+
+<script>
+const cookiedugiesTicketHTML = `
+<div class="roll">
+
+  <!-- HERO -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="roll-label">— folio 001 · Amanda Camacho's project archive —</div>
+      <div class="eyebrow"><span>Case Study</span><span style="background:#781C2B;color:#FBF7EE;">Branding · 001</span></div>
+      <div class="hero-name">Cookiedugies</div>
+      <div class="hero-sub">Branding / Brand Experience</div>
+      <div class="hero-tagline">Baked nostalgia, love at first sight.</div>
+      <div class="collage pair">
+        <img src="images/hero-cookiedugies-1.jpeg" alt="Cookiedugies">
+        <img src="images/hero-cookiedugies-2.jpeg" alt="Cookiedugies">
+      </div>
+      <div class="handnote">— Dugie says hi :)</div>
+      <div class="folio">folio 001 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- OVERVIEW -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Overview</span><span style="background:#FFD8E0;color:#513F2B;">folio 002</span></div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">What</span>
+          <span class="field-value">A handmade-cookie brand with a packaging-as-experience twist: a toy mini-oven that you literally "bake" the cookie in and pull out.</span>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">For whom</span>
+          <span class="field-value">People looking for moments of genuine joy and unique details — those who, as kids, dreamed of having their own little oven and can now reconnect with that nostalgia.</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Role</span>
+          <span class="field-value">Branding, content production, and partial creative direction. Creating and vectorizing the mascot "Dugie," video editing, leading the Instagram visual identity.</span>
+        </div>
+      </div>
+      <div class="folio">folio 002 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CHALLENGE -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Challenge</span><span style="background:#FFFAD2;color:#513F2B;">folio 003</span></div>
+      <div class="split">
+        <div>
+          <span class="field-label">Problem</span>
+          <p>We already had Dugie and the brand tone defined, but were missing a clear product differentiator against the competition.</p>
+        </div>
+        <div>
+          <span class="field-label">Solution</span>
+          <p>Turn the packaging into the core experience: a sensory mini-oven that taps into generational toy nostalgia — buying the cookie means buying the ritual of "baking" it yourself.</p>
+        </div>
+      </div>
+      <div class="folio">folio 003 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- VISUAL / MOODBOARD -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Visual / Moodboard</span><span style="background:#EDFBFE;color:#513F2B;">folio 004</span></div>
+      <span class="field-label">Project palette</span>
+      <div class="swatches">
+        <div class="swatch-item"><div class="swatch" style="background:#4A2F23"></div><span>Chocolate brown</span></div>
+        <div class="swatch-item"><div class="swatch" style="background:#F7C6E0"></div><span>Pastel pink</span></div>
+        <div class="swatch-item"><div class="swatch" style="background:#F48FB1"></div><span>Flirty pink</span></div>
+        <div class="swatch-item"><div class="swatch" style="background:#F5E6A0"></div><span>Buttery yellow</span></div>
+      </div>
+      <div style="font-size:11px; margin-top:22px; line-height:1.6;">Chocolate brown brings balance and sophistication; pastel pink conveys calm and care; flirty pink adds energy and fun; buttery yellow evokes homemade warmth.</div>
+
+      <img loading="lazy" src="images/tipografia-cookiedugies.jpg" alt="Logo and typography — Cookiedugies" style="width:100%; margin-top:14px; border:1px solid rgba(81,63,43,0.3); filter:sepia(8%);">
+
+      <span class="field-label">References</span>
+      <p style="font-size:12.5px; line-height:1.6; margin: 6px 0 18px;">During research, a competing brand used a full stove as packaging — we decided to go with a standalone toy oven instead: more intimate, more of "its own object."</p>
+
+      <span class="field-label">Materials</span>
+      <p style="font-size:12.5px; line-height:1.6; margin: 6px 0 0;">Toy mini-oven-style packaging, open/close mechanism, inner tray.</p>
+      <div class="folio">folio 004 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CREATIVE PROCESS -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Creative Process</span><span style="background:#FFD8E0;color:#513F2B;">folio 005</span></div>
+      <ul class="roadmap">
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">01 — Discover</div>
+            <div class="stage-desc">Researching retro branding references to define the tone.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">02 — Research</div>
+            <div class="stage-desc">Competitor analysis. Key finding: one brand used a full stove as packaging.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">03 — Concept</div>
+            <div class="stage-desc">Building the concept around the differentiator: nostalgia + standalone toy oven.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">04 — Design</div>
+            <div class="stage-desc">Sketching and vectorizing Dugie, the visual foundation of the whole brand.</div>
+            <div class="stage-thumbs">
+              <img loading="lazy" src="images/boceto-cookiedugies-1.jpeg" alt="WhatsApp 05-21 10.29 PM — Dugie sketch 1">
+              <img loading="lazy" src="images/boceto-cookiedugies-2.jpeg" alt="WhatsApp 05-21 10.40 PM — Dugie sketch 2">
+              <img loading="lazy" src="images/boceto-cookiedugies-3.jpeg" alt="WhatsApp 05-21 11.50 PM — Dugie sketch 3">
+              <img loading="lazy" src="images/boceto-cookiedugies-4.jpeg" alt="WhatsApp 05-21 11.58 PM — Dugie sketch 4">
+              <img loading="lazy" src="images/boceto-cookiedugies-5.jpeg" alt="WhatsApp 05-26 12.45 PM — Dugie sketch 5">
+            </div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">05 — Prototype</div>
+            <div class="stage-desc">Packaging prototype. Areas of opportunity found: transport and the open/close mechanism.</div>
+          </div>
+        </li>
+      </ul>
+      <div class="folio">folio 005 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- SOLUTION -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Solution</span><span style="background:#FFFAD2;color:#513F2B;">folio 006</span></div>
+      <span class="field-label">Result</span>
+      <div class="solution-grid">
+        <div>
+          <img loading="lazy" src="images/solution-cookiedugies-1.jpeg" alt="Illustration of Dugie, the brand mascot">
+          <div class="solution-caption">Dugie, the mascot (brand character)</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-cookiedugies-2.jpeg" alt="Mini-oven packaging template">
+          <div class="solution-caption">Mini-oven packaging dieline</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-cookiedugies-3.jpeg" alt="Packaging system with brand identity applied">
+          <div class="solution-caption">Packaging with brand identity applied</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-cookiedugies-4.jpeg" alt="QR code linking to the Instagram profile">
+          <div class="solution-caption">QR code linking to the Instagram profile</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-cookiedugies-5.jpeg" alt="The mini-oven open with cookies, product photography">
+          <div class="solution-caption">The mini-oven open (product photography)</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-cookiedugies-6.jpeg" alt="The mini-oven closed, ready for launch">
+          <div class="solution-caption">The mini-oven, ready for launch</div>
+        </div>
+      </div>
+      <div class="video-highlight">
+        <video controls preload="none" poster="images/solution-cookiedugies-5.jpeg">
+          <source src="videos/cookiedugies.mp4" type="video/mp4">
+        </video>
+        <div class="video-highlight-caption">Promo video (more content on the Instagram QR)</div>
+      </div>
+      <div class="folio">folio 006 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- GALLERY -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Gallery</span><span style="background:#EDFBFE;color:#513F2B;">folio 007</span></div>
+      <div class="gallery-grid">
+        <img loading="lazy" src="images/galeria-cookiedugies-1.jpeg" alt="Cookiedugies — gallery">
+        <img loading="lazy" src="images/galeria-cookiedugies-2.jpeg" alt="Cookiedugies — gallery">
+        <img loading="lazy" src="images/galeria-cookiedugies-3.jpeg" alt="Cookiedugies — gallery">
+        <img loading="lazy" src="images/galeria-cookiedugies-4.jpeg" alt="Cookiedugies — gallery">
+        <img loading="lazy" src="images/galeria-cookiedugies-5.jpeg" alt="Cookiedugies — gallery">
+        <img loading="lazy" src="images/galeria-cookiedugies-6.jpeg" alt="Cookiedugies — gallery">
+        <img loading="lazy" src="images/galeria-cookiedugies-7.jpeg" alt="Cookiedugies — gallery">
+        <img loading="lazy" src="images/galeria-cookiedugies-8.jpeg" alt="Cookiedugies — gallery">
+        <img loading="lazy" src="images/galeria-cookiedugies-9.jpeg" alt="Cookiedugies — gallery">
+        <img loading="lazy" src="images/galeria-cookiedugies-10.jpeg" alt="Cookiedugies — gallery">
+      </div>
+      <div class="folio">folio 007 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- IMPACT -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Impact</span><span style="background:#781C2B;color:#FBF7EE;">folio 008</span></div>
+      <ul class="impact-list">
+        <li><b>What I learned</b><span>Good organization also depends on a good team and everyone's commitment.</span></li>
+        <li><b>Results</b><span>Coherence is everything for a brand — and details make the difference.</span></li>
+        <li><b>Implementation</b><span>Implemented at the digital level: identity, mascot, and content live on Instagram (@cookiedugies); the physical product was modeled in detail as a launch plan (200 mini-ovens, $34,300 MXN investment).</span></li>
+        <li><b>Improvements</b><span>Solving the open/close mechanism and the packaging's transport logistics.</span></li>
+        <li><b>Conclusion</b><span>What stays with me most is how important it is for a brand to have a complete identity, not just a visual one — and above all, the coherence it needs to keep across every dimension. Animating Dugie taught me how to bring AI into design without handing the task over entirely: I vectorized and created Dugie myself, AI only gave it motion. I also learned that differentiation isn't always the obvious thing — Cookiedugies' wasn't the flavor or the ingredients, but the packaging and the experience.</span></li>
+      </ul>
+      <div class="folio">folio 008 / 08 — end of the roll</div>
+    </div>
+  </div>
+
+  <div class="end-cut">✂ — — — — — — — — — — — — — — — — — — — — —</div>
+</div>
+`;
+
+const luzvivaTicketHTML = `
+<div class="roll">
+
+  <!-- HERO -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="roll-label">— folio 002 · Amanda Camacho's project archive —</div>
+      <div class="eyebrow"><span>Case Study</span><span style="background:#781C2B;color:#FBF7EE;">Social Media · 002</span></div>
+      <div class="hero-name">Luz Viva</div>
+      <div class="hero-sub">Social Media Management</div>
+      <div class="hero-tagline">Finding its own voice for a brand that already had everything — except someone to say it on social media.</div>
+      <div class="hero-wide">
+        <img src="images/hero-luzviva-1.jpg" alt="Luz Viva">
+      </div>
+      <div class="folio">folio 001 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- OVERVIEW -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Overview</span><span style="background:#FFD8E0;color:#513F2B;">folio 002</span></div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">What</span>
+          <span class="field-value">A Mexican design studio founded in 2019 by Stephy, an industrial designer. It handcrafts phone cases, stationery, accessories, clothing, and home pieces, with an identity already well established in the product itself — but still not fully translated to social media.</span>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">For whom</span>
+          <span class="field-value">People who value handmade design, color, and Mexican culture as part of their everyday identity.</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Role</span>
+          <span class="field-value">Social Media Manager: content grid, tone audit and fine-tuning, copywriting, and spotting untapped opportunities.</span>
+        </div>
+      </div>
+      <div class="folio">folio 002 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CHALLENGE -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Challenge</span><span style="background:#FFFAD2;color:#513F2B;">folio 003</span></div>
+      <div class="split">
+        <div>
+          <span class="field-label">Problem</span>
+          <p>Luz Viva already had a well-established brand and product identity, but its social media voice was still scattered: content posted without a grid to hold it together, and no tone that felt consistent from one post to the next.</p>
+        </div>
+        <div>
+          <span class="field-label">Solution</span>
+          <p>Start from what was already published — not from scratch — to find what was working, fine-tune it, and build a content grid on top that could sustain that tone month after month, while also spotting untapped opportunities on the account.</p>
+        </div>
+      </div>
+      <div class="folio">folio 003 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CREATIVE PROCESS -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Creative Process</span><span style="background:#FFD8E0;color:#513F2B;">folio 004</span></div>
+      <ul class="roadmap">
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">01 — Diagnosis</div>
+            <div class="stage-desc">Auditing already-published content, to identify which tone elements were already working and which drifted away from the brand identity.</div>
+            <div class="stage-thumbs wide">
+              <img loading="lazy" src="images/boceto-luzviva-1.jpg" alt="Luz Viva — content audit 1">
+              <img loading="lazy" src="images/boceto-luzviva-2.jpg" alt="Luz Viva — content audit 2">
+            </div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">02 — Planning</div>
+            <div class="stage-desc">Designing the monthly content grid, aligned with the product calendar and dates relevant to the brand. As part of the grid's visualizations, a breakdown of creation stages based on the Kanban methodology was included, so pending tasks could be seen clearly regardless of the publishing schedule.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">03 — Production</div>
+            <div class="stage-desc">Copywriting adapted to the already-refined tone, built to hold consistency across posts.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">04 — Optimization</div>
+            <div class="stage-desc">Reviewing metrics and the existing conversation on the account to spot content gaps and turn them into concrete actions.</div>
+          </div>
+        </li>
+      </ul>
+      <div class="folio">folio 004 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- SOLUTION -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Solution</span><span style="background:#FFFAD2;color:#513F2B;">folio 005</span></div>
+      <span class="field-label">Result</span>
+      <p style="font-size:11.5px; line-height:1.65; margin: 6px 0 12px;">The heart of the project was a Notion workspace built to visualize the content grid month by month and sustain Luz Viva's social media strategy over time. The main view was a calendar, paired with a gallery view on the side to spot at a glance which photo or graphic matched each post.</p>
+      <p style="font-size:11.5px; line-height:1.65; margin: 0 0 12px;">Each post held title, social network, format, date, status, and content pillar, plus the images, the already-written copy, and extras like the inspiration behind the piece — with a to-do checklist and a "ideas to reuse" section for another network or a future post.</p>
+      <p style="font-size:11.5px; line-height:1.65; margin: 0 0 16px;">Progress was tracked with a status system defined together with the client — "ready to edit," "recorded," "ready/published" — visualized as a Kanban board. An "All content" table offered the overall view, and a Resources section gathered support links, an inspiration guide by pillar, and included the strategy brief that kicked off the whole project.</p>
+      <p style="font-size:11px; margin: 0 0 16px;"><a href="https://tranquil-look-aaa.notion.site/CONTENIDO-LUZ-VIVA-97a52f02ed9b4aae8c22cafe254ebbf1" target="_blank" style="color:var(--oxblood);">View the full planner</a> · <a href="https://tranquil-look-aaa.notion.site/LUZ-VIVA-bcbcde6898494dee882969586152f545" target="_blank" style="color:var(--oxblood);">See more about the project</a></p>
+      <div class="solution-grid wide">
+        <div>
+          <img loading="lazy" src="images/solution-luzviva-1.jpg" alt="Overview of the content organization">
+          <div class="solution-caption">Overview of the content organization</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-luzviva-2.png" alt="Resources and content-pillar sections">
+          <div class="solution-caption">Resources and content pillars, aligned with the defined tone and digital presence (includes the <a href="https://tranquil-look-aaa.notion.site/CONTENIDO-LUZ-VIVA-97a52f02ed9b4aae8c22cafe254ebbf1" target="_blank" style="color:inherit;">content strategy brief</a>)</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-luzviva-3.jpg" alt="Kanban-style creation-stages visualization">
+          <div class="solution-caption">Breakdown of creation stages (Kanban methodology), visible regardless of the grid's publishing schedule</div>
+        </div>
+      </div>
+      <div class="folio">folio 005 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- GALLERY -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Gallery</span><span style="background:#EDFBFE;color:#513F2B;">folio 006</span></div>
+      <div class="gallery-grid wide">
+        <img loading="lazy" src="images/galeria-luzviva-1.jpg" alt="Luz Viva — gallery">
+        <img loading="lazy" src="images/galeria-luzviva-2.jpg" alt="Luz Viva — gallery">
+        <img loading="lazy" src="images/galeria-luzviva-3.png" alt="Luz Viva — gallery">
+      </div>
+      <div class="folio">folio 006 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- IMPACT -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Impact</span><span style="background:#781C2B;color:#FBF7EE;">folio 007</span></div>
+      <ul class="impact-list">
+        <li><b>Conclusion</b><span>If this project made one thing clear, it's that no content strategy survives poor communication with the client — no matter how refined the tone or how solid the grid, the work only reaches its best version when there's a clear, constant channel to validate decisions, resolve doubts about the brand, and course-correct in time. More than a technical lesson, it was a lesson in process: communication isn't an extra step on top of the creative work, it's the condition that makes it possible.</span></li>
+      </ul>
+      <div class="folio">folio 007 / 07 — end of the roll</div>
+    </div>
+  </div>
+
+  <div class="end-cut">✂ — — — — — — — — — — — — — — — — — — — — —</div>
+</div>
+`;
+
+const sequenceTicketHTML = `
+<div class="roll">
+
+  <!-- HERO -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="roll-label">— folio 003 · Amanda Camacho's project archive —</div>
+      <div class="eyebrow"><span>Case Study</span><span style="background:#781C2B;color:#FBF7EE;">L'Oréal Brandstorm · 003</span></div>
+      <div class="hero-name">Séquence</div>
+      <div class="hero-sub">Fragrance concept — L'Oréal Brandstorm 2026 / YSL Beauty</div>
+      <div class="hero-tagline">A ritual of transformation, bottled into a single object.</div>
+      <div class="video-highlight wide">
+        <video controls preload="none" poster="images/hero-sequence-poster.png">
+          <source src="videos/sequence.mp4" type="video/mp4">
+        </video>
+        <div class="video-highlight-caption">Pitch video — L'Oréal Brandstorm 2026</div>
+      </div>
+      <div class="folio">folio 001 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- OVERVIEW -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Overview</span><span style="background:#FFD8E0;color:#513F2B;">folio 002</span></div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">What</span>
+          <span class="field-value">Séquence grew out of a question we'd honestly been avoiding for a while: why buy separate bottles for different moments of the day, when multi-chamber capsule technology has been solving the same problem in other corners of cosmetics for years? The proposal — developed for L'Oréal Brandstorm 2026 — condenses morning, afternoon, and evening into a single object: a bottle with three internal chambers visible through the glass, each holding a distinct olfactive layer, that activate progressively depending on how many pumps the user chooses to give themselves.</span>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">For whom</span>
+          <span class="field-value">Positioned for L'Oréal Luxe, under the YSL Beauty brand: the only division with the innovation scale and aspirational narrative needed to carry a €180-280 bottle built on multi-chamber technology.</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Role</span>
+          <span class="field-value">Creative direction and original idea, teamed up with Naomi (Design and Visual Communication) and Michelle (Industrial Design). Conceiving the mechanism, dividing roles across the team, and producing the pitch video.</span>
+        </div>
+      </div>
+      <div class="folio">folio 002 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CHALLENGE -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Challenge</span><span style="background:#FFFAD2;color:#513F2B;">folio 003</span></div>
+      <div class="split">
+        <div>
+          <span class="field-label">Problem</span>
+          <p>The challenge Brandstorm set wasn't to design yet another perfume — the luxury market is already saturated with those — but to defend, with numbers and narrative, why this idea deserved to live specifically inside L'Oréal Luxe and not in mass market. It wasn't enough for the idea to be pretty: it had to be innovative, sustainable, inclusive, feasible, and scalable, and each of those five words demanded its own evidence.</p>
+        </div>
+        <div>
+          <span class="field-label">Solution</span>
+          <p>Anchor the concept to concrete facts from L'Oréal Luxe itself — its 14% growth in fragrances in 2024, technological precedents like Osmobloom™ or YSL Scent-Sation, the internal culture of La Culture de l'Écart — so that Séquence stopped sounding like a school exercise and started sounding like a product that could actually make it to market.</p>
+        </div>
+      </div>
+      <div class="folio">folio 003 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- VISUAL / MOODBOARD -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Visual / Moodboard</span><span style="background:#EDFBFE;color:#513F2B;">folio 004</span></div>
+      <span class="field-label">Visual references · aesthetic direction</span>
+      <p style="font-size:12.5px; line-height:1.6; margin: 6px 0 18px;">A curation of references that inspired the concept — not photography of the project itself, but the mood and the visual/sensory logics behind the idea.</p>
+      <div class="solution-grid">
+        <div>
+          <img loading="lazy" src="images/moodboard-sequence-1.jpeg" alt="Maybelline Teddy Tint">
+          <div class="solution-caption">This is where it all started: seeing how one application read as day, two as afternoon, and three as night was the moment I understood that "buildable" could be a language applied to something as different as a perfume.</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/moodboard-sequence-2.jpeg" alt="Disassembled watch movement in black and white">
+          <div class="solution-caption">Séquence's rotary valve needed to feel like this: not a simple dispenser, but precision engineering — watchmaking was the obvious reference for thinking about how such a small mechanism can hold so much complexity.</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/moodboard-sequence-3.jpeg" alt="Lab pipettes with a purple flower threaded through them">
+          <div class="solution-caption">Tube within tube, layer within layer: this image sums up the logic of the three chambers working together without losing their individual identity better than any diagram could.</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/moodboard-sequence-4.jpeg" alt="Editorial collection of Henry Rose perfume bottles">
+          <div class="solution-caption">Before thinking about the mechanism, I thought about the object: Séquence had to feel like a collector's piece, not just another package on the shelf — this reference set that standard.</div>
+        </div>
+      </div>
+      <div class="moodboard-footnote">Curated by me; third-party images used solely for aesthetic direction in this case study.</div>
+      <div class="folio">folio 004 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CREATIVE PROCESS -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Creative Process</span><span style="background:#FFD8E0;color:#513F2B;">folio 005</span></div>
+      <ul class="roadmap">
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">01 — Discover</div>
+            <div class="stage-desc">It all started almost by accident, watching a TikTok review of Maybelline's Teddy Tint: a girl described how one application looked natural and easy (brunch), two already intensified the look (date), and three took it to its strongest point (night out). That's the click that holds all of Séquence together: more product doesn't simply mean "more intense" — each application builds a layer that works on its own and, added to the ones before it, forms something new. I carried that logic (so everyday, so unassuming as "luxury inspiration") over to fragrance: if daytime perfumes already lean fresh and sweet and nighttime ones lean intense and sensual, why not let the actual gesture of applying the perfume build that transition, layer by layer, instead of buying three separate bottles for three moments of the day?</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">02 — Research</div>
+            <div class="stage-desc">Before writing a single line of the proposal, we had to research which L'Oréal division could credibly carry this technology — and why YSL Beauty, with its DNA of transformation and freedom and the direct precedent of Scent-Sation, was the natural territory for Séquence and not any other brand in the portfolio.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">03 — Concept</div>
+            <div class="stage-desc">That's where the three-chamber architecture was born: the decision that the number of pumps — one, two, or three — would progressively activate each olfactive layer through an internal rotary valve, the piece that actually converts accumulated pressure into an open channel and turns an everyday gesture into a choice of identity.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">04 — Team & Roles</div>
+            <div class="stage-desc">As the one behind the idea, it was also on me to put together the right team to carry it: I brought in Naomi, from Design and Visual Communication, to translate the proposal into slides that communicated clearly and met the competition's requirements, and Michelle, from Industrial Design, for the render and sketch of the functional bottle. My own role combined creative direction with looking after the experience of whoever would use the product — thinking through Séquence not just conceptually but in how it would feel, step by step, to decide how many pumps to give yourself — on top of producing the video Brandstorm required as part of the submission myself.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">05 — Prototype</div>
+            <div class="stage-desc">The result came together as three slides — concept and elevator pitch, sustainability/inclusivity/feasibility, and scalability with metrics — plus the pitch video, the full package Brandstorm 2026 received as our final submission.</div>
+          </div>
+        </li>
+      </ul>
+      <div class="folio">folio 005 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- SOLUTION -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Solution</span><span style="background:#FFFAD2;color:#513F2B;">folio 006</span></div>
+      <p style="font-size:11.5px; line-height:1.65; margin: 6px 0 16px;">The technical solution boils down to something that sounds simple but isn't: an internal rotary valve that turns accumulated pressure into progressively opening channels. One pump activates only Chamber 1 — fresh, citrus notes meant to energize without overwhelming; two pumps bring in Chamber 2, floral or spiced, building presence; and three pumps put all three chambers to work at once, releasing the woody, musky notes that close out the day. The bottle itself, with its differently-toned liquids visible through the glass, works as much as a piece of design as it does a piece of engineering.</p>
+      <div class="solution-grid">
+        <div>
+          <img loading="lazy" src="images/solution-sequence-1.jpeg" alt="Diagram of Séquence's three-chamber mechanism and rotary valve">
+          <div class="solution-caption">Mechanism diagram: internal chambers, rotary valve, and blend flow</div>
+        </div>
+      </div>
+      <div class="folio">folio 006 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- IMPACT -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Impact</span><span style="background:#781C2B;color:#FBF7EE;">folio 007</span></div>
+      <ul class="impact-list">
+        <li><b>What I learned</b><span>That leading a proposal of this size involves something school rarely teaches explicitly: having the idea isn't enough — you have to know who to bring in to execute it and what role belongs to each person within that execution.</span></li>
+        <li><b>Results</b><span>The proposal was built around measurable, ambitious KPIs — 50,000 units sold in the first six months across pilot markets, a 40% per-chamber refill rate by the end of year one, over two million organic impressions on #fragrancetok in the first quarter — figures meant as the kind of evidence a corporate jury needs to take seriously an idea that could otherwise sound more like science fiction than precision engineering applied to luxury.</span></li>
+        <li><b>Implementation</b><span>The individual per-chamber refill system — 67% less glass compared to buying three separate fragrances — was explicitly designed to connect with "Join the Refill" and with L'Oréal for the Future's goal of cutting packaging 20% by 2030, so that sustainability wasn't an afterthought but part of the product's own architecture.</span></li>
+        <li><b>Conclusion</b><span>If Séquence makes one thing clear, it's that luxury and technological purpose don't compete with each other when given the right structure to coexist: the very chamber that solves a sustainability problem is the same one that builds, pump by pump, the story of someone who lets themselves be different depending on the hour.</span></li>
+      </ul>
+      <div class="folio">folio 007 / 07 — end of the roll</div>
+    </div>
+  </div>
+
+  <div class="end-cut">✂ — — — — — — — — — — — — — — — — — — — — —</div>
+</div>
+`;
+
+const thecoffeeTicketHTML = `
+<div class="roll">
+
+  <!-- HERO -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="roll-label">— folio 004 · Amanda Camacho's project archive —</div>
+      <div class="eyebrow"><span>Case Study</span><span style="background:#781C2B;color:#FBF7EE;">Media Plan · 004</span></div>
+      <div class="hero-name">the coffee.</div>
+      <div class="hero-sub">Media plan</div>
+      <div class="hero-tagline">Taking a to-go coffee model born in Curitiba and shaped in Tokyo to five Mexican cities, with the city itself as the medium.</div>
+      <div class="hero-wide">
+        <img src="images/hero-thecoffee-1.jpeg" alt="the coffee. — storefront and to-go coffee">
+      </div>
+      <div class="folio">folio 001 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- OVERVIEW -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Overview</span><span style="background:#FFD8E0;color:#513F2B;">folio 002</span></div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">What</span>
+          <span class="field-value">the coffee. is a specialty to-go coffee chain founded in 2018 in Curitiba, Brazil, by the Fertonani brothers after a trip to Tokyo that made them completely rethink the café format. It runs on a cashless micro-retail model: shops of just 3 to 10 m², no cashier, orders placed via tablet or app, where the barista focuses solely on making the coffee. The project involved designing its entry plan into Mexico: a $50,000,000 MXN investment to position the brand across five cities during 2026.</span>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">For whom</span>
+          <span class="field-value">Two audiences with the same gesture: the core digital consumer aged 18 to 35, for whom coffee is part of a ritual rather than a whim, and the aspirational professional aged 36 to 51, who associates the brand with efficiency and good taste — both across CDMX, Monterrey, Guadalajara, Puebla, and Querétaro.</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Role</span>
+          <span class="field-value">While the rest of the team was thinking about the media mix in the usual terms — TV for the institutional spot — I proposed shifting that budget toward streaming: not just because the core audience already lives there, but because more and more people are choosing streaming over cable, and I wanted the plan to bet on that trend before it became obvious. That's where the Netflix + Amazon Prime Video strategy came from. I also developed the OOH billboard mockups and scripted the plan's persuasive narrative — the voice behind "The city already knows."</span>
+        </div>
+      </div>
+      <div class="folio">folio 002 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CHALLENGE -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Challenge</span><span style="background:#FFFAD2;color:#513F2B;">folio 003</span></div>
+      <div class="split">
+        <div>
+          <span class="field-label">Problem</span>
+          <p>the coffee. was entering Mexico with no local track record, competing in a saturated specialty-coffee segment, and with a model — tiny shops, no cashier, no waiter — that reads as innovation in Curitiba or Tokyo, but could feel cold or foreign in a new market if the media plan limited itself to advertising coffee instead of communicating a way of living the city.</p>
+        </div>
+        <div>
+          <span class="field-label">Solution</span>
+          <p>Stop segmenting by age and segment by attitude instead: speak to those who build their identity around what they consume, and back that narrative with a $50M plan spread across five simultaneous cities, combining the physical impact of OOH and DOOH with the digital reach and prestige that streaming brings.</p>
+        </div>
+      </div>
+      <div class="folio">folio 003 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- VISUAL / MOODBOARD -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Visual / Moodboard</span><span style="background:#EDFBFE;color:#513F2B;">folio 004</span></div>
+      <span class="field-label">Brand identity · minimalism as ritual</span>
+      <p style="font-size:12.5px; line-height:1.6; margin: 6px 0 18px;">Before writing a single billboard, we had to understand what the brand stood for visually: less color, less space, less interaction — but maximum quality and coherence. That conscious rejection of noise was the starting point for the whole narrative.</p>
+      <div class="solution-grid">
+        <div>
+          <img loading="lazy" src="images/moodboard-thecoffee-1.jpeg" alt="Minimalist storefront of the coffee.">
+          <div class="solution-caption">Typical identity: compact shops, sans-serif typography, monochrome — "less" turned into a café.</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/moodboard-thecoffee-2.jpeg" alt="Customer holding a to-go coffee from the coffee.">
+          <div class="solution-caption">The cup as the real protagonist: any narrative had to survive this simple an image.</div>
+        </div>
+      </div>
+      <div class="folio">folio 004 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CREATIVE PROCESS -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Creative Process</span><span style="background:#FFD8E0;color:#513F2B;">folio 005</span></div>
+      <ul class="roadmap">
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">01 — Diagnosis</div>
+            <div class="stage-desc">A SWOT that made the brand's central tension clear: the same compactness that lets it open new locations fast is what can make it feel cold, and the same tech dependency that makes it efficient is what leaves it exposed to becoming obsolete. From there came four audiences — core consumer, aspirational professional, potential franchisees, and media/creators — prioritized by influence and importance, plus a set of SMART objectives: 15+ new locations, delivery in 2 minutes or less, and +20% in complementary-product sales like bakery items, over 12 months with quarterly review.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">02 — Media objective & target</div>
+            <div class="stage-desc">Translating that diagnosis into a concrete media objective: position the coffee. as the leading specialty brand in urban awareness among ages 18-51, across the 5 priority markets, reaching ~12 million unique people with 3 to 5 impressions per person per month over 52 weeks. The target was defined attitudinally rather than demographically — people who build their identity through what they consume — with two socioeconomic segments (A+/A/B+) concentrated in CDMX, Monterrey, Guadalajara, Puebla, and Querétaro.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">03 — Media selection</div>
+            <div class="stage-desc">This is where my streaming proposal came in: I noticed the team's conversation still assumed TV as the "heavyweight" audiovisual medium, when the real trend — more and more people trading cable for streaming platforms — pointed elsewhere. I pushed to move that budget to Netflix and Amazon Prime Video, with a 30s pre-roll and a 6s bumper, one single take, no voiceover, so it would work equally well as background or as the main event. This was paired with OOH as the primary medium, digital as secondary, and DOOH as geo-targeted reinforcement in A+ locations.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">04 — Narrative & mockups</div>
+            <div class="stage-desc">I wrote the "The city already knows" narrative — each billboard tells a chapter, every city gets its own copy, the drink is always the protagonist — and developed the mockups for the five billboards that carry it: "5:58 AM. The city already started" for the cold brew in CDMX, "No excuses. No sugar." for the americano in Monterrey, "What you drink says who you are" for the matcha latte in Guadalajara, "the usual, but better" for the cold café de olla in Puebla, and "Between meetings" for the flat white marking the brand's arrival in Querétaro.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">05 — Scheduling</div>
+            <div class="stage-desc">A 12-month flow chart that staggers the rollout city by city instead of launching all five markets at once: physical and digital OOH kick off in CDMX and Monterrey starting in January, Guadalajara, Puebla, and Querétaro join in the second quarter alongside DOOH, and streaming runs from month one with Netflix, adding Amazon Prime during the expansion phase.</div>
+          </div>
+        </li>
+      </ul>
+      <div class="folio">folio 005 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- SOLUTION -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Solution</span><span style="background:#FFFAD2;color:#513F2B;">folio 006</span></div>
+      <span class="field-label">The five billboards — "The city already knows"</span>
+      <div class="solution-grid wide">
+        <div>
+          <img loading="lazy" src="images/solution-thecoffee-1.jpeg" alt="CDMX billboard — Cold Brew — 5:58 AM. The city already started">
+          <div class="solution-caption">CDMX · Cold Brew — "5:58 AM. The city already started."</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-thecoffee-2.jpg" alt="Monterrey billboard — Americano — No excuses, no sugar">
+          <div class="solution-caption">Monterrey · Americano — "No excuses. No sugar."</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-thecoffee-3.jpeg" alt="Guadalajara billboard — Matcha Latte — What you drink says who you are">
+          <div class="solution-caption">Guadalajara · Matcha Latte — "What you drink says who you are."</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-thecoffee-4.jpeg" alt="Puebla billboard — Cold café de olla — the usual, but better">
+          <div class="solution-caption">Puebla · Cold café de olla — "the usual, but better."</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-thecoffee-5.jpeg" alt="Querétaro billboard — Flat White — Between meetings">
+          <div class="solution-caption">Querétaro · Flat White — "Between meetings." (market launch)</div>
+        </div>
+      </div>
+      <p style="font-size:11.5px; line-height:1.65; margin: 18px 0 0;">The $50,000,000 MXN investment was split across six fronts: physical OOH as the primary medium (28.6% · $14.3M), digital across Meta, TikTok, Google, Pinterest, and Spotify (24% · $12M), DOOH in A+ locations (11.6% · $5.8M), streaming as support (12% · $6M), centralized creative production (2% · $1M), and a contingency reserve for quarterly reallocation (21.8% · $10.9M) — built so the plan could respond to real results instead of just executing what was planned in January.</p>
+      <div class="folio">folio 006 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- GALLERY -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Gallery</span><span style="background:#EDFBFE;color:#513F2B;">folio 007</span></div>
+      <div class="gallery-grid wide">
+        <img loading="lazy" src="images/galeria-thecoffee-1.jpg" alt="the coffee. — SWOT diagnosis">
+        <img loading="lazy" src="images/galeria-thecoffee-2.jpg" alt="the coffee. — plan-by-medium table">
+        <img loading="lazy" src="images/galeria-thecoffee-3.jpg" alt="the coffee. — annual activation flow chart">
+      </div>
+      <div class="folio">folio 007 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- IMPACT -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Impact</span><span style="background:#781C2B;color:#FBF7EE;">folio 008</span></div>
+      <ul class="impact-list">
+        <li><b>What I learned</b><span>That a media plan doesn't hold up on budget and coverage alone — it needs a narrative that gives people a reason to notice it. Proposing streaming meant arguing that prestige is also a medium, not just reach.</span></li>
+        <li><b>Expected results</b><span>~12 million unique people reached, 3 to 5 impressions per person per month, 80+ GRP target, over 35% average VTR on digital, over 70% completion rate on streaming, and +15 points of brand recall measured through quarterly tracking.</span></li>
+        <li><b>Implementation</b><span>A four-quarter calendar: launch in CDMX and Monterrey (Q1), expansion to Guadalajara, Puebla, and Querétaro with narrative differentiated by city (Q2), optimization and contingency reallocation based on real performance (Q3), and closing out with OOH reactivation, Netflix's return, and a brand lift study to evaluate the year and plan for 2027 (Q4).</span></li>
+        <li><b>Conclusion</b><span>What I take away most from this project is that the city can, literally, be the medium: each billboard works because it talks to the exact place it's standing in, not because it repeats the same message five times. Writing that narrative — and arguing that a channel as "hard to measure" as streaming deserved a place in the mix — was my way of making sure the plan didn't stop at numbers.</span></li>
+      </ul>
+      <div class="folio">folio 008 / 08 — end of the roll</div>
+    </div>
+  </div>
+
+  <div class="end-cut">✂ — — — — — — — — — — — — — — — — — — — — —</div>
+</div>
+`;
+
+const secretariaTicketHTML = `
+<div class="roll">
+
+  <!-- HERO -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="roll-label">— folio 005 · Amanda Camacho's project archive —</div>
+      <div class="eyebrow"><span>Case Study</span><span style="background:#781C2B;color:#FBF7EE;">Graphic Design · 005</span></div>
+      <div class="hero-name" style="font-size:48px; line-height:1.35;">Secretaría de Seguridad</div>
+      <div class="hero-sub">Graphic Design — Social Communications, Government of the State of Mexico</div>
+      <div style="font-family: var(--font-display); font-style: italic; font-size:13px; color: var(--chocolate); margin: -2px 0 4px;">Outreach, Social Communications, and Public Relations Units of the State of Mexico's Secretariat of Security</div>
+      <div class="hero-tagline">Designing inside a style guide that was already closed, week after week, without ever stopping to propose.</div>
+      <div class="collage pair">
+        <img src="images/hero-secretaria-1.png" alt="#8M campaign — All free of violence">
+        <img src="images/hero-secretaria-2.jpg" alt="Prevention Adds Up at Home infographic">
+      </div>
+      <div class="folio">folio 001 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- OVERVIEW -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Overview</span><span style="background:#FFD8E0;color:#513F2B;">folio 002</span></div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">What</span>
+          <span class="field-value">A six-month internship in the Graphic Design area of the State of Mexico's Secretariat of Security, producing graphics for institutional social media (Facebook and X) and for the department's internal magazine — all within an already-defined visual identity manual, with no room to reinterpret it.</span>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">For whom</span>
+          <span class="field-value">Citizens of the State of Mexico: prevention content, security result figures, and institutional communication that needed to feel approachable without losing its official tone.</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Role</span>
+          <span class="field-value">Graphic design intern within the social communications team: producing assigned campaigns (5-6 pieces per week for Facebook and X), plus my own deliverables like monthly infographics and commemorative-date pieces, and an unrequested character proposal.</span>
+        </div>
+      </div>
+      <div class="folio">folio 002 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CHALLENGE -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Challenge</span><span style="background:#FFFAD2;color:#513F2B;">folio 003</span></div>
+      <div class="split">
+        <div>
+          <span class="field-label">Problem</span>
+          <p>The Secretariat's identity manual left almost no room for interpretation: a closed palette, fixed typography, mandatory logo hierarchy — and yet, every week a different piece had to be produced, under very tight deadlines, that communicated clearly without ever stepping outside the system.</p>
+        </div>
+        <div>
+          <span class="field-label">Solution</span>
+          <p>Treat the manual not as a limit but as a language I needed to master well enough to move through it with ease — and, once mastered, use that same understanding to propose pieces no one asked for: my own infographic and an institutional character.</p>
+        </div>
+      </div>
+      <div class="folio">folio 003 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- VISUAL / MOODBOARD -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Visual / Moodboard</span><span style="background:#EDFBFE;color:#513F2B;">folio 004</span></div>
+      <span class="field-label">Identity manual · the system, not the mood</span>
+      <p style="font-size:12.5px; line-height:1.6; margin: 6px 0 18px;">Unlike other projects in this portfolio, there was no curated moodboard here: there was an already-closed system to learn and respect in every piece, week after week.</p>
+      <div class="swatches">
+        <div class="swatch-item"><div class="swatch" style="background:#922446"></div><span>Pantone 70-15 C</span></div>
+        <div class="swatch-item"><div class="swatch" style="background:#B69759"></div><span>Pantone 16-13 C</span></div>
+        <div class="swatch-item"><div class="swatch" style="background:#D2BB90"></div><span>Pantone 16-11 / 12-10 C</span></div>
+        <div class="swatch-item"><div class="swatch" style="background:#1D1D1B"></div><span>Pantone Black C</span></div>
+      </div>
+      <img loading="lazy" src="images/manual-secretaria-1.jpg" alt="Identity manual — logo lockups and institutional palette" style="width:100%; margin-top:4px; border:1px solid rgba(81,63,43,0.3); filter:sepia(8%);">
+      <div class="solution-caption" style="text-align:left; margin-top:8px;">Mandatory lockups (shield + hummingbird + "SEGURIDAD"), signage variants, and the Pantone palette I worked with every week.</div>
+      <div class="folio">folio 004 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CREATIVE PROCESS -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Creative Process</span><span style="background:#FFD8E0;color:#513F2B;">folio 005</span></div>
+      <ul class="roadmap">
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">01 — Weekly brief</div>
+            <div class="stage-desc">Every campaign came assigned by the design lead and was split across the team: 5-6 pieces per week for Facebook and X, on topics ranging from commemorative dates to security result figures.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">02 — Production within the system</div>
+            <div class="stage-desc">Applying the manual — palette, lockups, typographic hierarchy — to every piece without wasting time reinterpreting it, because the weekly pace left no room for that. The discipline here wasn't creative but executional: making sure every deliverable felt part of the same system as the last.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">03 — My own deliverables</div>
+            <div class="stage-desc">Besides the assigned campaigns, I produced my own monthly pieces: the full commemorative-date sets for February and May, and data infographics like "Security in Numbers" and "Prevention Adds Up at Home" — content that required translating official figures into a legible piece without losing institutional rigor.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">04 — Character proposal</div>
+            <div class="stage-desc">The Secretariat opened a small internal call within the design team to propose an institutional character, and I entered with "Nomi": a mascot-spokesperson born from softening the word "normas" (rules) into something friendly, conceived as the Secretariat's voice on social media, in crime-prevention workshops, and in programs like "Vigilante Voluntario" and "Juguemos al Tránsito." Building the full concept — what it represents, what its colors mean, which contexts it works in — was a lesson in brand thinking applied to an institutional character.</div>
+          </div>
+        </li>
+      </ul>
+      <div class="folio">folio 005 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- SOLUTION -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Solution</span><span style="background:#FFFAD2;color:#513F2B;">folio 006</span></div>
+      <span class="field-label">Result</span>
+      <p style="font-size:11.5px; line-height:1.65; margin: 6px 0 16px;">"Security in Numbers" was the infographic I designed for the magazine section of the same name: official crime-reduction figures translated into a quick-read format, published as a full spread. Alongside it, "Nomi" was my entry for the internal institutional-character call: a complete brand logic — what it represents, what its colors communicate, which of the Secretariat's programs it would make sense in — thought through from scratch within the limits of the manual.</p>
+      <div class="solution-grid">
+        <div>
+          <img loading="lazy" src="images/solution-secretaria-1.jpg" alt="Security in Numbers infographic — crime-reduction figures">
+          <div class="solution-caption">Security in Numbers (institutional magazine)</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-secretaria-2.jpg" alt="Nomi character proposal">
+          <div class="solution-caption">Nomi — character proposal</div>
+        </div>
+      </div>
+      <div class="folio">folio 006 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- GALLERY -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Gallery</span><span style="background:#EDFBFE;color:#513F2B;">folio 007</span></div>
+      <div class="gallery-grid">
+        <img loading="lazy" src="images/galeria-secretaria-1.png" alt="World Day for Cultural Diversity for Dialogue and Development commemorative piece">
+        <img loading="lazy" src="images/galeria-secretaria-2.jpg" alt="International Day of Human Fraternity commemorative piece">
+        <img loading="lazy" src="images/galeria-secretaria-3.jpg" alt="Phone Fraud and Extortion infographic">
+        <img loading="lazy" src="images/galeria-secretaria-4.png" alt="Your State Police looks out for you">
+      </div>
+      <div class="folio">folio 007 / 08</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- IMPACT -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Impact</span><span style="background:#781C2B;color:#FBF7EE;">folio 008</span></div>
+      <ul class="impact-list">
+        <li><b>What I learned</b><span>That there's a kind of design that isn't about creating a system, but about reading it well and moving through it with precision — a different skill from starting from scratch, and one that rarely gets shown in a portfolio.</span></li>
+        <li><b>Results</b><span>An infographic published as a full spread in the institutional magazine, six months of weekly campaigns for Facebook and X, every commemorative-date piece for February and May, and a character proposal built on my own initiative.</span></li>
+        <li><b>Implementation</b><span>Content published on the official accounts of the State of Mexico's Secretariat of Security and in the department's internal magazine, with editorial review and approval on every deliverable.</span></li>
+        <li><b>Conclusion</b><span>This project taught me that designing within an already-closed identity isn't less of a design skill — it's design with a different discipline. Knowing when to follow the system to the letter and when that same system gives you room to propose something like Nomi — without breaking it — was, deep down, the skill I take away most from this experience.</span></li>
+      </ul>
+      <div class="folio">folio 008 / 08 — end of the roll</div>
+    </div>
+  </div>
+
+  <div class="end-cut">✂ — — — — — — — — — — — — — — — — — — — — —</div>
+</div>
+`;
+
+const kiddosTicketHTML = `
+<div class="roll">
+
+  <!-- HERO -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="roll-label">— folio 006 · Amanda Camacho's project archive —</div>
+      <div class="eyebrow"><span>Case Study</span><span style="background:#781C2B;color:#FBF7EE;">Digital Content · 006</span></div>
+      <div class="hero-name" style="font-size:52px;">kiddos</div>
+      <div class="hero-sub">Graphic Designer & Digital Content — Shapir BH.</div>
+      <div class="hero-tagline">Holding up an identity I didn't get to create, piece by piece, week after week.</div>
+      <div class="collage pair">
+        <img src="images/hero-kiddos-1.png" alt="KIDDOS post — Happy parents, happy babies">
+        <img src="images/hero-kiddos-2.png" alt="KIDDOS post — Thank you">
+      </div>
+      <div class="folio">folio 001 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- OVERVIEW -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Overview</span><span style="background:#FFD8E0;color:#513F2B;">folio 002</span></div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">What</span>
+          <span class="field-value">Graphic and digital content designer for KIDDOS, a Shapir BH. brand, producing and adapting graphic and audiovisual pieces for Instagram, TikTok, and Mercado Libre — always working on top of a brand identity that was already defined before I arrived.</span>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">For whom</span>
+          <span class="field-value">Parents and caregivers looking for practical, safe products for babies — the feed needed to feel just as trustworthy as the product it was selling.</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Role</span>
+          <span class="field-value">Production and adaptation of graphic and audiovisual content, managing creative assets in Google Workspace, and optimizing pieces per channel.</span>
+        </div>
+      </div>
+      <div class="folio">folio 002 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CHALLENGE -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Challenge</span><span style="background:#FFFAD2;color:#513F2B;">folio 003</span></div>
+      <div class="split">
+        <div>
+          <span class="field-label">Problem</span>
+          <p>We often find ourselves assuming that creative work is measured by the freedom we're given to invent from scratch; and yet, designing within an already-closed system — with its fixed logo, its assigned typography, its unmovable palette — demands a different kind of discipline, almost one of translation: every post, every video, every adaptation for Mercado Libre had to feel part of the same visual universe, without repeating formulas or falling into the monotony that threatens any feed sustained week after week. In concrete terms, the system came down to a paper-texture background, a handful of organic clouds and dotted lines in just four colors — blue, pink, green, and a grayish lilac — and it was within that minimal vocabulary that all the visual variety the content demanded had to be resolved.</p>
+        </div>
+        <div>
+          <span class="field-label">Solution</span>
+          <p>The challenge, then, wasn't to imagine an identity, but to inhabit one with enough variety that the audience never took it for granted — and to learn to read, within such a narrow system, how much room was actually left to propose.</p>
+        </div>
+      </div>
+      <img loading="lazy" src="images/process-kiddos-1.jpeg" alt="Comparison: my own KIDDOS welcome-post proposal vs. the version the brand adopted" style="width:100%; margin-top:14px; border:1px solid rgba(81,63,43,0.3);">
+      <div class="solution-caption" style="text-align:left; margin-top:8px;">My original welcome-post proposal (above) next to the example the brand gave me as a guide (below) — the gap between my more illustrative instinct and the actual system I ended up working within.</div>
+      <div class="folio">folio 003 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- CREATIVE PROCESS -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Creative Process</span><span style="background:#FFD8E0;color:#513F2B;">folio 004</span></div>
+      <ul class="roadmap">
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">01 — Immersion</div>
+            <div class="stage-desc">Studying the existing assets (logo, fonts, colors, textures) in depth until internalizing their unwritten rules.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">02 — Per-channel optimization</div>
+            <div class="stage-desc">Finding a way for the same audiovisual piece to work across any channel — Instagram, TikTok, Mercado Libre — optimizing format, pacing, and tone for each platform without losing consistency with the overall identity.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">03 — Ongoing production</div>
+            <div class="stage-desc">Sustaining the weekly content pace within a collaborative Google Workspace workflow.</div>
+          </div>
+        </li>
+        <li>
+          <div class="check"></div>
+          <div>
+            <div class="stage-name">04 — Balance</div>
+            <div class="stage-desc">Negotiating between business goals (sales, conversion on Mercado Libre) and the feed's visual experience.</div>
+          </div>
+        </li>
+      </ul>
+      <div class="folio">folio 004 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- SOLUTION -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Solution</span><span style="background:#FFFAD2;color:#513F2B;">folio 005</span></div>
+      <span class="field-label">Result</span>
+      <p style="font-size:11.5px; line-height:1.65; margin: 6px 0 16px;">A feed able to move between the emotional and the commercial without ever leaving the same visual vocabulary: from a brand piece speaking directly to parents, to an educational carousel built to drive saves and shares — both unmistakably KIDDOS.</p>
+      <div class="solution-grid">
+        <div>
+          <img loading="lazy" src="images/solution-kiddos-1.jpg" alt="No such thing as perfect parents — brand piece with mascot">
+          <div class="solution-caption">No such thing as perfect parents</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-kiddos-2.jpg" alt="5 useful baby gift ideas — carousel cover">
+          <div class="solution-caption">5 useful gift ideas (carousel)</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-kiddos-3.jpg" alt="KIDDOS brand piece">
+          <div class="solution-caption">Piece 3</div>
+        </div>
+        <div>
+          <img loading="lazy" src="images/solution-kiddos-4.jpg" alt="KIDDOS brand piece">
+          <div class="solution-caption">Piece 4</div>
+        </div>
+      </div>
+      <div class="folio">folio 005 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- GALLERY -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Gallery</span><span style="background:#EDFBFE;color:#513F2B;">folio 006</span></div>
+      <div class="gallery-grid">
+        <img loading="lazy" src="images/galeria-kiddos-1.jpg" alt="Special coupon offer — Portable Booster Seat">
+        <img loading="lazy" src="images/galeria-kiddos-2.jpg" alt="A more independent little one — carousel slide">
+      </div>
+      <div class="folio">folio 006 / 07</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- IMPACT -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Impact</span><span style="background:#781C2B;color:#FBF7EE;">folio 007</span></div>
+      <ul class="impact-list">
+        <li><b>What I learned</b><span>I learned that adaptation, far from being a surrender of creativity, is one of its most demanding forms: when resources are limited and the identity is already a given, inventiveness doesn't disappear — it simply relocates, concentrating on finding how something that already exists can be improved, nuanced, or brought closer to what one had in mind, without ever needing to start from zero.</span></li>
+        <li><b>Results</b><span>Six months of sustained graphic and audiovisual content for Instagram, TikTok, and Mercado Libre, within a visual system reduced to four colors and a handful of graphic elements.</span></li>
+        <li><b>Implementation</b><span>Content published on KIDDOS' official accounts and its Mercado Libre listing, managed collaboratively in Google Workspace.</span></li>
+        <li><b>Conclusion</b><span>Working within KIDDOS also forced me to rethink what we mean by brand coherence: at first I couldn't explain why the logo felt slightly out of tune with the rest of the visual system, until I understood that my job wasn't to question each component on its own, but to figure out how to make that piece feel natural within the brand's universe once combined with the design I was contributing. That's where I learned, perhaps, this project's most important lesson: coherence rarely lives in individual elements, but in the — often invisible — way we manage to make them work together.</span></li>
+      </ul>
+      <div class="folio">folio 007 / 07 — end of the roll</div>
+    </div>
+  </div>
+
+  <div class="end-cut">✂ — — — — — — — — — — — — — — — — — — — — —</div>
+</div>
+`;
+
+const decks = [
+  { id:'luzviva', name:'Luz Viva', tag:'Social media', color:'#C97F87',
+    images:['images/ring-luzviva-1.jpeg','images/ring-luzviva-2.jpeg','images/ring-luzviva-3.jpg','images/ring-luzviva-4.jpeg','images/ring-luzviva-5.jpeg'],
+    sections:[['The challenge','Design a content strategy that gave Luz Viva its own voice on social media, with a visual identity recognizable from the very first scroll.'],
+      ['My role','Content planning, art direction of the pieces, and monthly editorial calendar.'],
+      ['Process','Audience research, visual-tone moodboard, and a template system to keep consistency without losing freshness.'],
+      ['Result','An account with a clear identity, ready to scale up content volume without losing cohesion.']]},
+  { id:'cookiedugies', name:'Cookiedugies', tag:'Branding', color:'#781C2B',
+    images:['images/ring-cookiedugies-1.jpeg','images/ring-cookiedugies-2.jpeg','images/ring-cookiedugies-3.jpg','images/ring-cookiedugies-4.jpeg','images/ring-cookiedugies-5.jpeg'],
+    sections:[['The challenge','Build a warm, artisanal brand for a cookie venture that felt handmade but still professional.'],
+      ['My role','Brand direction: naming, palette, typography, and applications.'],
+      ['Process','Artisanal moodboard exploration, logo iteration, and defining a warm visual system.'],
+      ['Result','A coherent brand identity, ready for physical packaging and digital presence.']]},
+  { id:'sequence', name:'Séquence', tag:"Creative & PM", color:'#6B3A4A',
+    images:['images/ring-sequence-1.jpeg','images/ring-sequence-2.jpeg','images/ring-sequence-3.jpg','images/ring-sequence-4.jpeg','images/ring-sequence-5.jpeg'],
+    sections:[['The challenge','Create an original fragrance concept for L\'Oréal Brandstorm 2026, with independent creative direction.'],
+      ['My role','Creative direction of the concept, teamed up with Mich and Naomi.'],
+      ['Process','Brand narrative, olfactive-visual moodboard, and building the aesthetic universe.'],
+      ['Result','A complete concept, used as evidence of applied creative direction.']]},
+  { id:'thecoffee', name:'the coffee.', tag:'Marketing & Media', color:'#513F2B',
+    images:['images/ring-thecoffee-1.jpeg','images/ring-thecoffee-2.jpeg','images/ring-thecoffee-3.jpg','images/ring-thecoffee-4.jpeg','images/ring-thecoffee-5.jpeg'],
+    sections:[['The challenge','Design a media plan for a Japanese specialty-coffee brand.'],
+      ['My role','Media strategy: channels, scheduling, and key messaging.'],
+      ['Process','Audience analysis, per-channel objectives, and execution timeline.'],
+      ['Result','An actionable media plan, aligned with the brand\'s editorial identity.']]},
+  { id:'secretaria', name:'SSEM', tag:'Graphic design', color:'#5E7A8C',
+    images:['images/ring-secretaria-1.jpg','images/ring-secretaria-2.jpg','images/ring-secretaria-3.jpg','images/ring-secretaria-4.jpeg','images/ring-secretaria-5.jpg'],
+    sections:[['The challenge','Produce graphics for institutional social media that left room for creativity without breaking brand guidelines, under very tight turnaround times.'],
+      ['My role','Internal communications intern, within the graphic design area.'],
+      ['Process','Campaigns split across the team (5-6 pieces for Facebook and X per campaign, assigned by the lead), plus my own deliverables like infographics and monthly commemorative-date pieces.'],
+      ['Result','An infographic published as a full spread in the institutional magazine, and a proposed child/youth character to represent the department.']]},
+  { id:'kiddos', name:'KIDDOS', tag:'Digital content', color:'#8A5A3B',
+    images:['images/ring-kiddos-1.jpeg','images/ring-kiddos-2.jpeg','images/ring-kiddos-3.jpg','images/ring-kiddos-4.jpeg','images/ring-kiddos-5.jpeg'],
+    sections:[['The challenge','Give visual coherence to an Instagram feed working only with existing brand assets: logo, graphics, typography, color, and texture.'],
+      ['My role','Production and adaptation of graphic and audiovisual content for Instagram, TikTok, and Mercado Libre.'],
+      ['Process','Managing creative assets in Google Workspace and adapting pieces to different formats, balancing business goals with user experience.'],
+      ['Result','A feed with its own identity and consistency, built from already-defined brand assets — not created from scratch.']]}
+];
+const aboutMe = { id:'aboutme', name:'About Me', tag:'About me', color:'#C9A227' };
+
+
+const aboutMeTicketHTML = `
+<div class="roll">
+
+  <!-- HERO -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="roll-label">— special folio · about Amanda Camacho —</div>
+      <div class="eyebrow"><span>About Me</span><span style="background:#FFD8E0;color:#781C2B;">special folio</span></div>
+      <div class="hero-name" style="font-size:52px;">Amanda Camacho</div>
+      <div class="hero-split">
+        <div class="hero-single">
+          <img src="images/hero-about-1.jpeg" alt="Amanda Camacho at work">
+        </div>
+        <div class="hero-split-text">
+          <div class="hero-sub">Social Media Information Management, UAEMEX — digital creative in training</div>
+          <div class="hero-tagline">As you'll probably notice throughout this portfolio, these projects don't follow a single straight line, and I'd rather tell you that myself before you notice it on your own: I'm still finding my path, letting every new project reveal something different about what I actually want to do, with no rush to pretend I already know.</div>
+        </div>
+      </div>
+      <div class="folio">folio 001 / 004</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- OVERVIEW -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Overview</span><span style="background:#FFD8E0;color:#513F2B;">folio 002</span></div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">Who I am</span>
+          <span class="field-value">A student in Social Media Information Management at UAEMEX, and a digital creative with a multidisciplinary background — of crossed tastes, as you'll see.</span>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">What I do</span>
+          <span class="field-value">Creative direction, digital content, branding, and UX, all run through an editorial lens: I'm less interested in inventing from nothing than in finding the best way an already-existing idea can be told.</span>
+        </div>
+      </div>
+      <div class="folio">folio 002 / 004</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- INTERESTS -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>Interests</span><span style="background:#FFFAD2;color:#513F2B;">folio 003</span></div>
+      <p style="font-size:11.5px; line-height:1.7;">I go through life collecting brands that dare not to be obvious and saving moodboards I almost never use in full — thinking, more than about the final image, about how an idea moves from concept to experience. That's why fashion, quiet luxury, and creative direction are the territory where I feel most at home.</p>
+      <p style="font-size:11.5px; line-height:1.7; margin-top:10px;">But I'm also into other things —</p>
+      <div class="hero-wide" style="margin-top:14px;">
+        <img src="images/collage-about-1.png" alt="Amanda Camacho's personal collage" style="aspect-ratio:auto;">
+      </div>
+      <div class="folio">folio 003 / 004</div>
+    </div>
+  </div>
+
+  <div class="perf"></div>
+
+  <!-- HOW I WORK -->
+  <div class="stub">
+    <div class="stub-inner">
+      <div class="eyebrow"><span>How I Work</span><span style="background:#781C2B;color:#FBF7EE;">folio 004</span></div>
+      <p style="font-size:11.5px; line-height:1.7;">With intention: every piece starts from a clear concept before it becomes visual, and I'd rather lead a team, find like-minded collaborators, and propose the idea that works, than execute alone from scratch. Over time I've come to understand that my strength isn't so much creating out of nothing, but taking an idea that already exists and pushing it to its full potential: improving it, combining it, finding the angle it didn't have yet. If putting this portfolio together taught me anything, it's that variety isn't indecision, it's method: each project was a different way of asking myself what I'm good at, and I'm still asking. Thank you for making it this far.</p>
+      <div class="folio">folio 004 / 004 — still under construction</div>
+    </div>
+  </div>
+
+  <div class="end-cut">✂ — — — — — — — — — — — — — — — — — — — — —</div>
+</div>
+`;
+
+const TOTAL = 30; // 6 proyectos × 5 tarjetas
+const R = 250;
+const anglePerCard = 360/TOTAL;
+const ringSpin = document.getElementById('ringSpin');
+const cardEls = [];
+
+for(let i=0;i<TOTAL;i++){
+  const angle = i*anglePerCard;
+  const groupIndex = Math.floor(i/5);
+  const posInGroup = i%5;
+  const isCase = posInGroup===2;
+  const deck = decks[groupIndex];
+  const tilt = [-8,5,-4,9,-6][posInGroup];
+
+  const item = document.createElement('div');
+  item.className='orbit-item';
+  const cardR = isCase ? R + 16 : R; // la case card sobresale un poco del anillo para destacar
+  item.style.transform = `rotate(${angle}deg) translate(${cardR}px)`;
+
+  const counter = document.createElement('div');
+  counter.className='counter-spin';
+  counter.style.transform = `rotate(${-angle}deg)`;
+
+  const card = document.createElement('div');
+  card.className = 'card' + (isCase ? ' case':'');
+  card.style.backgroundColor = '#FBFAF5'; // color de respaldo mientras carga o si falta la foto: igual al fondo de la página (--cream), no al color de cada deck (backgroundColor, no background, para no resetear size/position/repeat del CSS)
+  card.style.backgroundImage = `url('${deck.images[posInGroup]}')`;
+  card.style.setProperty('--tilt', `${tilt}deg`); // vía variable CSS para que la animación de pulso (case card) no pise este rotate
+  card.dataset.group = groupIndex;
+  card.dataset.case = isCase ? '1':'0';
+  if(isCase){ card.innerHTML = `<span class="open-label">→</span>`; }
+
+  counter.appendChild(card);
+  item.appendChild(counter);
+  ringSpin.appendChild(item);
+  cardEls.push({el:card, counter, angle, groupIndex, isCase});
+}
+
+const ringOrbit = document.getElementById('ringOrbit');
+const scrollHint = document.getElementById('scrollHint');
+const hintCount = document.getElementById('hintCount');
+const stage = document.getElementById('stage');
+const scrim = document.getElementById('scrim');
+const win = document.getElementById('window');
+const windowScroll = document.getElementById('windowScroll');
+const windowTitle = document.getElementById('windowTitle');
+const windowSubtitle = document.getElementById('windowSubtitle');
+const windowHero = document.getElementById('windowHero');
+const windowBody = document.getElementById('windowBody');
+const closeBtn = document.getElementById('closeBtn');
+const backToTop = document.getElementById('backToTop');
+const centerName = document.getElementById('centerName');
+const deckLabel = document.getElementById('deckLabel');
+
+let depth = 0; // 0 = anillo completo, 1 = zoom máximo (deck a la vista)
+let zoomed = false;
+let currentGroup = 0;
+let n = 0; // contador continuo (no se resetea) — permite loop infinito real: proyecto activo = n mod decks.length
+let windowOpen = false;
+let introDone = false;
+let navLocked = false; // evita que un solo gesto de scroll dispare varios saltos seguidos
+function lockNavBriefly(){ navLocked = true; setTimeout(()=>{ navLocked = false; }, 780); }
+const ZOOM_SCALE = 2.7;
+const FRAME_Y = -60;
+const ZOOM_TY = FRAME_Y/ZOOM_SCALE + R;
+
+function groupCenterAngle(g){ return (g*5+2)*anglePerCard; }
+
+function setRingRotation(deg){
+  ringSpin.style.transform = `rotate(${deg}deg)`;
+  cardEls.forEach(c=> c.counter.style.transform = `rotate(${-deg-c.angle}deg)`);
+}
+
+function setSpeed(mode){
+  const t = mode==='fast' ? 'transform 0.08s linear' : 'transform 0.75s cubic-bezier(.22,.61,.36,1)';
+  ringOrbit.style.transition = t;
+  ringSpin.style.transition = t;
+  cardEls.forEach(c=> c.counter.style.transition = t);
+}
+
+function render(){
+  const scale = 1 + depth*(ZOOM_SCALE-1);
+  const ty = depth*ZOOM_TY;
+  ringOrbit.style.transform = `scale(${scale}) translate(0px, ${ty}px)`;
+  const rot = depth * (-90 - groupCenterAngle(n)); // usa n SIN módulo -> el ángulo siempre crece, nunca "regresa"
+  setRingRotation(rot);
+
+  // ya no se ocultan las tarjetas de los proyectos vecinos: se quedan visibles,
+  // es el zoom + la rotación del anillo lo que las empuja fuera de encuadre de forma natural
+  const isZoomedIn = depth > 0.55;
+  cardEls.forEach(c=>{
+    c.el.style.opacity = '1';
+    c.el.style.pointerEvents = 'auto';
+  });
+
+  centerName.classList.toggle('hide-zoomed', depth>0.05);
+  deckLabel.classList.toggle('show', isZoomedIn);
+  scrollHint.style.opacity = depth>0.1 ? '0' : '0.75';
+  if(isZoomedIn){
+    deckLabel.querySelector('.num').textContent = `Project ${currentGroup+1} of ${decks.length}`;
+    deckLabel.querySelector('.name').textContent = decks[currentGroup].name;
+    hintCount.textContent = `Project ${currentGroup+1} — ${decks[currentGroup].name} — ${decks[currentGroup].tag}`;
+  } else {
+    hintCount.textContent = 'Full ring';
+  }
+}
+
+function goToGroup(g){
+  setSpeed('smooth');
+  currentGroup = ((g % decks.length) + decks.length) % decks.length;
+  n = currentGroup; // reinicia el contador de loop desde aquí
+  depth = 1; zoomed = true;
+  render();
+}
+function exitZoom(){ zoomed = false; depth = 0; n = 0; setSpeed('smooth'); render(); }
+
+cardEls.forEach(({el,groupIndex,isCase})=>{
+  el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    if(windowOpen || !introDone) return;
+    if(zoomed && currentGroup===groupIndex && isCase){
+      openWindow(decks[groupIndex]);
+    } else {
+      goToGroup(groupIndex);
+    }
+  });
+});
+
+// navStep(down): un solo paso de navegación del anillo, en la dirección dada.
+// down=true equivale a "scroll abajo" / "swipe hacia arriba" (avanzar);
+// down=false equivale a "scroll arriba" / "swipe hacia abajo" (retroceder).
+// Compartida entre el wheel handler (mouse) y el gesto táctil (móvil).
+function navStep(down){
+  if(!zoomed){
+    // scroll abajo desde el anillo completo -> salto directo al zoom máximo (proyecto 0)
+    if(down){
+      lockNavBriefly();
+      setSpeed('smooth');
+      currentGroup = 0;
+      n = 0;
+      zoomed = true;
+      depth = 1;
+      render();
+    }
+    // scroll arriba ya sin zoom: no-op
+    return;
+  }
+
+  // ya está en zoom máximo: cada gesto avanza/retrocede UN proyecto completo
+  lockNavBriefly();
+  setSpeed('smooth');
+  if(down){
+    n += 1; // nunca se resetea -> loop infinito real
+    currentGroup = ((n % decks.length) + decks.length) % decks.length;
+    render();
+  } else {
+    if(n > 0){
+      n -= 1;
+      currentGroup = ((n % decks.length) + decks.length) % decks.length;
+      render();
+    } else {
+      zoomed = false;
+      depth = 0;
+      n = 0;
+      render();
+    }
+  }
+}
+
+stage.addEventListener('wheel', (e)=>{
+  if(windowOpen || !introDone) return;
+  e.preventDefault();
+  if(navLocked) return;
+
+  const down = e.deltaY > 0;
+  const up = e.deltaY < 0;
+  if(!down && !up) return;
+
+  navStep(down);
+}, {passive:false});
+
+// --- Gesto táctil (móvil/tablet): swipe vertical = mismo avance/retroceso que el wheel ---
+// El tap directo a una tarjeta sigue funcionando igual (evento click, más abajo),
+// esto solo añade el swipe como alternativa al scroll progresivo pensado para mouse.
+let touchStartY = null;
+let touchStartX = null;
+let touchIsSwiping = false;
+const SWIPE_THRESHOLD = 40; // px mínimos de desplazamiento vertical para contar como swipe
+
+stage.addEventListener('touchstart', (e)=>{
+  if(windowOpen || !introDone) return;
+  if(e.touches.length !== 1) return;
+  touchStartY = e.touches[0].clientY;
+  touchStartX = e.touches[0].clientX;
+  touchIsSwiping = false;
+}, {passive:true});
+
+stage.addEventListener('touchmove', (e)=>{
+  if(windowOpen || !introDone || touchStartY === null) return;
+  const dy = e.touches[0].clientY - touchStartY;
+  const dx = e.touches[0].clientX - touchStartX;
+  if(Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)){
+    touchIsSwiping = true;
+    e.preventDefault(); // evita el rebote/scroll nativo de la página mientras se hace swipe en el anillo
+  }
+}, {passive:false});
+
+stage.addEventListener('touchend', (e)=>{
+  if(windowOpen || !introDone || touchStartY === null){ touchStartY = null; touchStartX = null; return; }
+  const touch = e.changedTouches[0];
+  const dy = touch.clientY - touchStartY;
+  const dx = touch.clientX - touchStartX;
+  touchStartY = null; touchStartX = null;
+  if(!touchIsSwiping) return; // desplazamiento chico -> se deja como tap normal (dispara click)
+  touchIsSwiping = false;
+  if(Math.abs(dy) < SWIPE_THRESHOLD || Math.abs(dx) > Math.abs(dy)) return; // muy corto o más horizontal que vertical
+  if(navLocked) return;
+  const down = dy < 0; // dedo sube en pantalla = swipe hacia arriba = avanzar (igual que scroll abajo)
+  navStep(down);
+}, {passive:true});
+
+function openWindow(d){
+  windowOpen = true;
+  if(d.id === 'cookiedugies'){
+    win.classList.add('window-ticket');
+    windowTitle.textContent = '';
+    windowSubtitle.textContent = '';
+    windowBody.innerHTML = cookiedugiesTicketHTML;
+  } else if(d.id === 'luzviva'){
+    win.classList.add('window-ticket');
+    windowTitle.textContent = '';
+    windowSubtitle.textContent = '';
+    windowBody.innerHTML = luzvivaTicketHTML;
+  } else if(d.id === 'sequence'){
+    win.classList.add('window-ticket');
+    windowTitle.textContent = '';
+    windowSubtitle.textContent = '';
+    windowBody.innerHTML = sequenceTicketHTML;
+  } else if(d.id === 'thecoffee'){
+    win.classList.add('window-ticket');
+    windowTitle.textContent = '';
+    windowSubtitle.textContent = '';
+    windowBody.innerHTML = thecoffeeTicketHTML;
+  } else if(d.id === 'secretaria'){
+    win.classList.add('window-ticket');
+    windowTitle.textContent = '';
+    windowSubtitle.textContent = '';
+    windowBody.innerHTML = secretariaTicketHTML;
+  } else if(d.id === 'kiddos'){
+    win.classList.add('window-ticket');
+    windowTitle.textContent = '';
+    windowSubtitle.textContent = '';
+    windowBody.innerHTML = kiddosTicketHTML;
+  } else if(d.id === 'aboutme'){
+    win.classList.add('window-ticket');
+    windowTitle.textContent = '';
+    windowSubtitle.textContent = '';
+    windowBody.innerHTML = aboutMeTicketHTML;
+  } else {
+    win.classList.remove('window-ticket');
+    windowTitle.textContent = d.name;
+    windowSubtitle.textContent = d.tag;
+    windowHero.style.background = d.color;
+    windowBody.innerHTML = d.sections.map(([k,v])=>`<section><p class="kicker">${k}</p><p>${v}</p></section>`).join('');
+  }
+  windowScroll.scrollTop = 0;
+  scrim.classList.add('open');
+  win.classList.add('open');
+}
+function closeWindow(){ windowOpen = false; scrim.classList.remove('open'); win.classList.remove('open'); }
+closeBtn.addEventListener('click', closeWindow);
+backToTop.addEventListener('click', closeWindow);
+scrim.addEventListener('click', closeWindow);
+centerName.addEventListener('click', ()=>{ if(!zoomed) openWindow(aboutMe); });
+
+let overscroll = 0;
+windowScroll.addEventListener('wheel', (e)=>{
+  if(windowScroll.scrollTop <= 0 && e.deltaY < 0){
+    overscroll += Math.abs(e.deltaY);
+    if(overscroll > 140){ closeWindow(); overscroll = 0; }
+  } else { overscroll = 0; }
+});
+
+// Equivalente táctil: deslizar hacia abajo estando ya arriba del todo del ticket lo cierra.
+let windowTouchStartY = null;
+windowScroll.addEventListener('touchstart', (e)=>{
+  windowTouchStartY = e.touches[0].clientY;
+}, {passive:true});
+windowScroll.addEventListener('touchmove', (e)=>{
+  if(windowTouchStartY === null) return;
+  const dy = e.touches[0].clientY - windowTouchStartY;
+  if(windowScroll.scrollTop <= 0 && dy > 0){
+    overscroll += dy;
+    if(overscroll > 140){ closeWindow(); overscroll = 0; windowTouchStartY = null; }
+  } else {
+    overscroll = 0;
+  }
+}, {passive:true});
+windowScroll.addEventListener('touchend', ()=>{ windowTouchStartY = null; overscroll = 0; });
+
+// --- Intro: motor por requestAnimationFrame con easeOutExpo (del prototipo original) ---
+// reparte el giro en toda la duración en vez de concentrarlo al inicio y quedarse quieto el resto.
+function easeOutExpo(t){ return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); }
+
+ringOrbit.style.transform = 'scale(1) translate(0px,0px)';
+ringSpin.style.transition = '';
+cardEls.forEach(c=> c.counter.style.transition = '');
+
+const INTRO_FROM = 900;
+const INTRO_TO = 0;
+const INTRO_DURATION = 2600;
+let introStart = null;
+
+function introTick(ts){
+  if(introStart === null) introStart = ts;
+  const t = Math.min(1, (ts - introStart) / INTRO_DURATION);
+  const e = easeOutExpo(t);
+  setRingRotation(INTRO_FROM + (INTRO_TO - INTRO_FROM) * e);
+  if(t < 1){
+    requestAnimationFrame(introTick);
+  } else {
+    centerName.classList.add('show');
+    introDone = true;
+  }
+}
+requestAnimationFrame(introTick);
+</script>
+
+</body>
+</html>
